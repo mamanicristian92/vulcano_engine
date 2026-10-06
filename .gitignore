@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.vscode/*
+!.vscode/settings.json
+*.log
+*.gz
+.pytest_cache/
+.mypy_cache/

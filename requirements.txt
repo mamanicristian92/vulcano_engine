@@ -1,0 +1,7 @@
+boto3
+botocore
+fastapi
+uvicorn
+requests
+pylint==4.0.8
+flake8==7.3.0
