@@ -5,3 +5,4 @@ uvicorn
 requests
 pylint==4.0.8
 flake8==7.3.0
+python-dotenv
