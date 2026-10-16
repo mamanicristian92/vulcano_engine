@@ -126,13 +126,13 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
 
 Parámetros:
 
-|Flag        |Short  |Opciones|Descripción                      | Default                       |
-|------------|-------|--------|---------------------------------|-------------------------------|
-|--queue     | -q    |        | Nombre de la cola SQS           |vulcano-events-queue           |
-|--wait-time | -w    |[1-20]  | Tiempo de Long Polling (1-20s)  |                               |
-|--url       |       |        | URL del Webhook Receptor        | http://localhost:8000/webhook |
-|--secret    |       |        | Clave secreta HMAC              |                               |
-|--mode      |       | send-webhook <br>start-dispatcher | Modo operativo   | send-webhook      |
+|Flag       |Short|Opciones|Descripción              |Default                        |
+|-----------|-----|--------|-------------------------|-------------------------------|
+|--queue    | -q  |        |Nombre de la cola SQS    |vulcano-events-queue           |
+|--wait-time| -w  |[1-20]  |Tiempo de Long Polling   |                               |
+|--url      |     |        |URL del Webhook Receptor | http://localhost:8000/webhook |
+|--secret   |     |        |Clave secreta HMAC       |                               |
+|--mode     |     |send-webhook <br> start-dispatcher| Modo operativo   | send-webhook      |
 
 **Ejemplo:**
 
