@@ -1,0 +1,11 @@
+services:
+  localstack:
+    container_name: triton_localstack
+    image: localstack/localstack:3.8.0
+    ports:
+      - "4566:4566"
+    environment:
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - "./docker/localstack/init/ready.d:/etc/localstack/init/ready.d"

@@ -43,39 +43,33 @@
         
         - Windows:
 
-          ```bash
-          python -m venv .venv
-          ```
+            ```bash
+            python -m venv .venv
+            ```
         
         - Linux / macOS:
 
-          ```bash
-          python3 -m venv .venv
-          ```
+            ```bash
+            python3 -m venv .venv
+            ```
         
         Esto crea una carpeta llamada `.venv`.
     
     2. Activarlo
 
-        - Windows (CMD):
-        
-          ```bash
-          .venv\Scripts\activate
-          ```
-
         - Windows (PowerShell):
 
-          ```bash
-          .\.venv\Scripts\Activate.ps1
-          ```
+            ```bash
+            .\.venv\Scripts\Activate.ps1
+            ```
 
         - Linux / macOS:
             
-          ```bash
-          source .venv/bin/activate
-          ```
+            ```bash
+            source .venv/bin/activate
+            ```
         
-          Cuando esté activado, normalmente verás algo como:
+        - Cuando esté activado, normalmente verás algo como:
 
             ```bash
             (.venv) $
@@ -83,18 +77,76 @@
 
     3. Instalar paquetes:
     
-        Con el entorno activado:
+        - Con el entorno activado:
 
-          ```bash
-          pip install -r requirements.txt
-          ```
+            ```bash
+            pip install -r requirements.txt
+            ```
+
+
+3. Levantar Localstack (con Docker instalado y corriendo en el sistema)
+
+    - Desde la carpeta del proyecto:
+
+        ```bash
+        docker compose up -d
+        ```
+    
+    - Revisar que esté en ejecución:
+
+        ```bash
+        docker ps
+        ```
+
+        Nota: Esto crea y levanta localstack y crea la cola de eventos
+
+4. Levantar API weebhook_receiver
+
+    - En otra terminal, con el **entorno activado** y en la carpeta raíz:
+
+        ```bash
+        uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
+        ```
 
 ## Cómo Usar
 
+Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
+
+- Enviar un mensaje a la cola de eventos:
+
+    ```bash
+    python app_operator.py
+    ```
+
+- Consumir mensajes de la cola de eventos:
+
+    ```bash
+    python app_operator.py --mode start-dispatcher
+    ```
+
+Parámetros:
+
+|Flag        |Short  |Opciones|Descripción                      | Default                       |
+|------------|-------|--------|---------------------------------|-------------------------------|
+|--queue     | -q    |        | Nombre de la cola SQS           |vulcano-events-queue           |
+|--wait-time | -w    |[1-20]  | Tiempo de Long Polling (1-20s)  |                               |
+|--url       |       |        | URL del Webhook Receptor        | http://localhost:8000/webhook |
+|--secret    |       |        | Clave secreta HMAC              |                               |
+|--mode      |       | send-webhook <br>start-dispatcher | Modo operativo   | send-webhook      |
+
+**Ejemplo:**
+
+Probar usar una clave distinta a la default:
+
+```bash
+python app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
+```
+
+Esto generará un 401 Unauthorized en el webhook_receiver
 
 ---
 
-## Calidad y pruebas
+### Calidad y pruebas
 
 El proyecto cuenta con pruebas automatizadas y herramientas de análisis estático
 (Flake8 y Pylint) para verificar su correcto funcionamiento y mantener la
@@ -105,12 +157,12 @@ consultar [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-##  Diagrama de Arquitectura de Telemetría
+###  Diagrama de Arquitectura de Telemetría
 
 
 ---
 
-## Equipo de desarrollo
+### Equipo de desarrollo
 
 ### Equipo 404
 
