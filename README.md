@@ -159,6 +159,43 @@ consultar [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ###  Diagrama de Arquitectura de Telemetría
 
+```mermaid
+flowchart TD
+    A[app_operator.py]
+    A -.-| |L
+    A -->|"Inicia main()"| C
+    
+    C{mode}
+    C -->| | D
+    C -->| | E
+    A -.-|"Captura quirúrgica" |K
+    
+
+    D(send-webhook)
+    D -.-|"generate_signature()" | H
+    D -->|"post(payload,sign,..)" | I
+    H[webhook_crypto.py]
+    I["webhook_receiver.py (API)"]
+    I --> |"produce_event(payload,..)" | J
+    
+    I -.- |"verify_signature()" | H
+    J[core_sqs.py]
+
+    E(start-dispatcher)
+    E --> |"consume_events(max_msg,..)" | J
+    
+    K[loggin_engine.py]
+    L[sanitizer.py]
+
+    M["Localstack (AWS)"]
+    J --- |"boto3.client().send_message()" |M
+    J --- |"boto3.client().receive_message()" |M
+
+    N([vulcano-events-queue])
+    O([vulcano-events-dlq])
+    M -.-| | N
+    M -.-| | O
+```
 
 ---
 
