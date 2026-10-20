@@ -207,7 +207,7 @@ flowchart TD
 - Integrante 2: [Venticola, Leandro Enrique](https://github.com/leoventicola/)
 - Integrante 3: [Cointte Cedron, Mateo](https://github.com/Th-30Mateo)
 - Integrante 4: [Choque, Ismael Alejandro](https://www.github.com/ismahack7)
-- Integrante 5: [Martinez, Gustavo Alejandro](https://www.github.com/)
+- Integrante 5: [Martinez, Gustavo Alejandro](https://www.github.com/gusmz111)
 - Integrante 6: [Mamaní, Cristian Alfredo](https://www.github.com/mamanicristian92)
 
 ### Video de presentación
