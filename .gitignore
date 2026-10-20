@@ -10,8 +10,3 @@ __pycache__/
 *.gz
 .pytest_cache/
 .mypy_cache/
-# Archivos de pruebas locales
-/probar_logging.py
-/probar_pipeline.py
-/probar_rotacion.py
-/logs_prueba/
