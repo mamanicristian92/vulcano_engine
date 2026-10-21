@@ -80,7 +80,7 @@
         - Con el entorno activado:
 
             ```bash
-            pip install -r requirements.txt
+            python -m pip install -r requirements.txt
             ```
 
 
