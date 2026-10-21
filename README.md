@@ -105,7 +105,7 @@
     - En otra terminal, con el **entorno activado** y en la carpeta raíz:
 
         ```bash
-        uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
+        python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
         ```
 
 5. Configurar el archivo .env
