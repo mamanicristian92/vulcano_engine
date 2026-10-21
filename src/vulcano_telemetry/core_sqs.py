@@ -16,7 +16,7 @@ def get_sqs_client(endpoint_url: str = "http://localhost:4566"):
     """Crea una instancia del cliente Boto3 SQS configurada para LocalStack."""
     return boto3.client(
         "sqs",
-        endpoint_url=os.getenv("SQS_ENDPOINT_URL", endpoint_url),
+        endpoint_url=endpoint_url,
         region_name=os.getenv("AWS_REGION", "us-east-1"),
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test")
