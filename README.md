@@ -108,6 +108,22 @@
         uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
         ```
 
+5. Configurar el archivo .env
+
+    Copiá el archivo de configuración de ejemplo:
+
+    - Windows (CMD):
+
+        ```bash
+        copy .env.example .env
+        ```
+
+    - Linux / macOS /Powershell:
+
+        ```bash
+        cp .env.example .env
+        ```
+
 ## Cómo Usar
 
 Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
