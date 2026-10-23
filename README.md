@@ -24,24 +24,26 @@
         ```bash
         cd ruta/de/la/carpeta
         ```
+
     2. Clona el repositorio:
         
         ```bash
         git clone git@github.com:mamanicristian92/vulcano_engine.git
         ```
+
+        *Nota: el comando utiliza SSH. Asegurate de tener configurada una clave SSH en GitHub.*
+
     3. Entra al proyecto:
         
         ```bash
         cd vulcano_engine
         ```
 
-2. Instalar dependencias
+2. Entorno virtual:
     
-    1. Crear el entorno virtual
-
-        Dentro de la carpeta del proyecto:
+    1. Crear el entorno (dentro de la carpeta del proyecto):
         
-        - Windows:
+        - Windows (CMD / Powershell):
 
             ```bash
             python -m venv .venv
@@ -53,9 +55,15 @@
             python3 -m venv .venv
             ```
         
-        Esto crea una carpeta llamada `.venv`.
+        *Esto crea una carpeta llamada `.venv`*
     
-    2. Activarlo
+    2. Activar el entorno virtual
+
+        - Windows (CMD):
+
+            ```bash
+            .venv\Scripts\activate
+            ```
 
         - Windows (PowerShell):
 
@@ -75,16 +83,16 @@
             (.venv) $
             ```
 
-    3. Instalar paquetes:
+3. Instalar paquetes:
     
-        - Con el entorno activado:
+    - Con el entorno activado:
 
-            ```bash
-            python -m pip install -r requirements.txt
-            ```
+        ```bash
+        python -m pip install -r requirements.txt
+        ```
 
 
-3. Levantar Localstack (con Docker instalado y corriendo en el sistema)
+4. Levantar Localstack (con Docker instalado y corriendo en el sistema)
 
     - Desde la carpeta del proyecto:
 
@@ -98,17 +106,17 @@
         docker ps
         ```
 
-        Nota: Esto crea y levanta localstack y crea la cola de eventos
+        Nota: Esto crea y levanta localstack; además crea la cola de eventos (si aún no está creada)
 
-4. Levantar API weebhook_receiver
+5. Levantar API weebhook_receiver
 
-    - En otra terminal, con el **entorno activado** y en la carpeta raíz:
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
 
         ```bash
         python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
         ```
 
-5. Configurar el archivo .env
+6. Configurar el archivo .env
 
     Copiá el archivo de configuración de ejemplo:
 
@@ -131,13 +139,13 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
 - Enviar un mensaje a la cola de eventos:
 
     ```bash
-    python app_operator.py
+    python src/app_operator.py send-webhook
     ```
 
 - Consumir mensajes de la cola de eventos:
 
     ```bash
-    python app_operator.py --mode start-dispatcher
+    python src/app_operator.py start-dispatcher
     ```
 
 Parámetros:
