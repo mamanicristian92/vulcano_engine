@@ -132,6 +132,14 @@
         cp .env.example .env
         ```
 
+    - Pon tus claves en el .env
+
+        ```
+        AWS_ACCESS_KEY_ID=
+        AWS_SECRET_ACCESS_KEY=
+        WEBHOOK_SECRET=
+        ```
+
 ## Cómo Usar
 
 Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
