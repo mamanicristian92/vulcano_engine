@@ -156,25 +156,31 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
     python src/app_operator.py start-dispatcher
     ```
 
-Parámetros:
+#### Anatomía:
 
-|Flag       |Short|Opciones|Descripción              |Default                        |
-|-----------|-----|--------|-------------------------|-------------------------------|
-|--queue    | -q  |        |Nombre de la cola SQS    |vulcano-events-queue           |
-|--wait-time| -w  |[1-20]  |Tiempo de Long Polling   |                               |
-|--url      |     |        |URL del Webhook Receptor | http://localhost:8000/webhook |
-|--secret   |     |        |Clave secreta HMAC       |                               |
-|--mode     |     |send-webhook <br> start-dispatcher| Modo operativo   | send-webhook      |
+|Argument         |Description                                   |
+|-----------------|----------------------------------------------|
+|send-webhook     |Enviar un Webhook HTTP de prueba              |
+|start-dispatcher |Consumir eventos de SQS y enviar a Webhooks   |
+|produce-sqs      |Publicar eventos en la cola SQS               |
+|start-receiver   |Publicar eventos en la cola SQS               |
+
+|Flag       |Short|Description                    |Default                        |
+|-----------|-----|-------------------------------|-------------------------------|
+|--queue    | -q  |Nombre de la cola SQS          |vulcano-events-queue           |
+|--wait-time| -w  |Tiempo de Long Polling [1-20]  | 10                            |
+|--url      |     |URL del Webhook Receptor       | WEBHOOK_URL (.env)            |
+|--secret   |     |Clave secreta HMAC             | WEBHOOK_SECRET (.env)         |
 
 **Ejemplo:**
 
-Probar usar una clave distinta a la default:
+Usar una clave distinta a la default:
 
 ```bash
-python app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
+python src/app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
 ```
 
-Esto generará un 401 Unauthorized en el webhook_receiver
+*Esto generará un 401 Unauthorized en el webhook_receiver*
 
 ---
 
