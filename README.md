@@ -174,13 +174,13 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
 
 **Ejemplo:**
 
-Probar usar una clave distinta a la default:
+Usar una clave distinta a la default:
 
 ```bash
-python app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
+python src/app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
 ```
 
-Esto generará un 401 Unauthorized en el webhook_receiver
+*Esto generará un 401 Unauthorized en el webhook_receiver*
 
 ---
 
