@@ -5,7 +5,7 @@ import time
 import requests
 from dotenv import load_dotenv
 from vulcano_telemetry.sanitizer import parse_queue_name, parse_wait_time, parse_webhook_url, parse_secret_key
-from vulcano_telemetry.core_sqs import get_sqs_client, consume_events, produce_event
+from vulcano_telemetry.core_sqs import get_sqs_client, consume_events, produce_event, delete_event
 from vulcano_telemetry.webhook_crypto import generate_signature
 from vulcano_telemetry.logging_engine import setup_vulcano_logging
 from vulcano_telemetry.exceptions import (SQSConnectionError, WebhookSignatureError, WebhookTimestampError, WebhookDeliveryError, CorruptedMessageError) #delivery error y msjcorrupto revisar nuevas excepciones
@@ -115,6 +115,7 @@ def main() -> None:
 
             for event in events:
                 dispatch_webhook(args.url, args.secret, event["body"])
+                delete_event(sqs, queue_url, event["receipt_handle"], event["message_id"])
 
         elif args.comando == "produce-sqs":
             sqs = get_sqs_client()
