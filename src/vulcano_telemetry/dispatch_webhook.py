@@ -66,7 +66,10 @@ def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,
                 wait_time=wait_time,
             )
         except CorruptedMessageError:
-            logger.exception("Se recibió un mensaje corrupto de SQS. Se omite.")
+            logger.exception(
+                "Error al consumir eventos: se detectó un mensaje "
+                "corrupto en SQS. Se propaga la excepción."
+            )
             raise
 
         if not events:
@@ -108,6 +111,7 @@ def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,
 
             except Exception:
                 logger.exception(
-                    "Error inesperado procesando el mensaje %s.",
+                    "Error inesperado procesando el mensaje %s."
+                    "Se registra el fallo y se continúa con el siguiente evento.",
                     event["message_id"],
                 )

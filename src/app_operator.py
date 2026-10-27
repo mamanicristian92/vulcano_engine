@@ -12,6 +12,8 @@ from vulcano_telemetry.webhook_crypto import generate_signature
 from vulcano_telemetry.logging_engine import setup_vulcano_logging
 from vulcano_telemetry.dispatch_webhook import run_dispatcher
 from vulcano_telemetry.exceptions import (SQSConnectionError, WebhookSignatureError, WebhookTimestampError, WebhookDeliveryError, CorruptedMessageError)
+from botocore.exceptions import BotoCoreError, ClientError
+
 load_dotenv()  # Cargar variables de entorno desde .env
 
 logger = setup_vulcano_logging()
@@ -70,6 +72,20 @@ def send_test_webhook(target_url: str, secret: str) -> None:
     logger.info("Respuesta del receptor Webhook HTTP %s: %s", response.status_code, result)
 
 
+def resolve_queue_url(queue_name: str) -> str:
+    """Obtiene la URL real de una cola existente en LocalStack."""
+    sqs = get_sqs_client()
+
+    try:
+        response = sqs.get_queue_url(QueueName=queue_name)
+        return response["QueueUrl"]
+
+    except (BotoCoreError, ClientError) as exc:
+        raise SQSConnectionError(
+            f"No se pudo obtener la URL de la cola '{queue_name}'."
+        ) from exc
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -92,7 +108,7 @@ def main() -> None:
             send_test_webhook(args.url, args.secret)
 
         elif args.comando == "start-dispatcher":
-            queue_url = f"http://localhost:4566/000000000000/{args.queue}"
+            queue_url = resolve_queue_url(args.queue)
             run_dispatcher(
                 queue_url=queue_url,
                 wait_time=args.wait_time,
@@ -102,7 +118,7 @@ def main() -> None:
 
         elif args.comando == "produce-sqs":
             sqs = get_sqs_client()
-            queue_url = f"http://localhost:4566/000000000000/{args.queue}"
+            queue_url = resolve_queue_url(args.queue)
             event_data = {"transaction_id": "tx_9981", "amount": 350.00, "status": "COMPLETED"}
 
             message_id = produce_event(sqs, queue_url, event_data)
@@ -141,10 +157,16 @@ def main() -> None:
         for exc in group.exceptions:
             logger.error("  • %s", exc)
 
+    except* Exception as group:
+        logger.error("Se produjeron errores inesperados durarte la ejecucion")
+        for exc in group.exceptions:
+            logger.error("  • %s", exc)
+
     finally:
         logger.info("Liberando recursos de observabilidad...")
-        if hasattr(logger, "listener") and logger.listener:
-            logger.listener.stop()
+        listeners = getattr(logger, "listener", None)
+        if listeners is not None:
+            listeners.stop()
 
 
 if __name__ == "__main__":
