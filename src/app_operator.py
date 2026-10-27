@@ -1,15 +1,17 @@
 import os
-import json
 import argparse
+import uvicorn
 import time
 import requests
+
 from dotenv import load_dotenv
+from vulcano_telemetry.webhook_receiver import app
 from vulcano_telemetry.sanitizer import parse_queue_name, parse_wait_time, parse_webhook_url, parse_secret_key
-from vulcano_telemetry.core_sqs import get_sqs_client, consume_events, produce_event
+from vulcano_telemetry.core_sqs import get_sqs_client, produce_event
 from vulcano_telemetry.webhook_crypto import generate_signature
 from vulcano_telemetry.logging_engine import setup_vulcano_logging
-from vulcano_telemetry.exceptions import (SQSConnectionError, WebhookSignatureError, WebhookTimestampError, WebhookDeliveryError, CorruptedMessageError) #delivery error y msjcorrupto revisar nuevas excepciones
-
+from vulcano_telemetry.dispatch_webhook import run_dispatcher
+from vulcano_telemetry.exceptions import (SQSConnectionError, WebhookSignatureError, WebhookTimestampError, WebhookDeliveryError, CorruptedMessageError)
 load_dotenv()  # Cargar variables de entorno desde .env
 
 logger = setup_vulcano_logging()
@@ -43,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
+
 def send_test_webhook(target_url: str, secret: str) -> None:
     """Envía un webhook HTTP firmado con HMAC-SHA256."""
     payload = '{"transaction_id": "tx_9981", "amount": 350.00, "status": "COMPLETED"}'
@@ -65,21 +68,6 @@ def send_test_webhook(target_url: str, secret: str) -> None:
         result = response.text
 
     logger.info("Respuesta del receptor Webhook HTTP %s: %s", response.status_code, result)
-
-def dispatch_webhook(target_url: str, secret: str, payload_dict: dict,) -> None:
-    """firma un evento y lo envía a un receptor Webhook HTTP."""
-    payload_bytes = json.dumps(payload_dict, separators=(',', ':'),).encode("utf-8")
-    timestamp = int(time.time())
-    signature = generate_signature(secret, timestamp, payload_bytes,)
-    headers = {"Content-Type": "application/json", "X-Webhook-Signature": f"t={timestamp},v1={signature}"}
-    try:
-        response = requests.post(target_url, data=payload_bytes, headers=headers, timeout=5,)
-        response.raise_for_status()
-
-    except requests.exceptions.RequestException as exc:
-        raise WebhookDeliveryError(f"No se pudo enviar el Webhook: {exc}") from exc
-
-    logger.info("Webhook entregado correctamente a %s. Código de respuesta: %s", target_url, response.status_code)
 
 
 def main() -> None:
@@ -104,17 +92,13 @@ def main() -> None:
             send_test_webhook(args.url, args.secret)
 
         elif args.comando == "start-dispatcher":
-            sqs = get_sqs_client()
             queue_url = f"http://localhost:4566/000000000000/{args.queue}"
-
-            logger.info("Iniciando despachador SQS -> Webhooks...")
-
-            events = consume_events(sqs, queue_url, wait_time=args.wait_time)
-
-            logger.info("Resividos %s eventos de SQS.", len(events))
-
-            for event in events:
-                dispatch_webhook(args.url, args.secret, event["body"])
+            run_dispatcher(
+                queue_url=queue_url,
+                wait_time=args.wait_time,
+                target_url=args.url,
+                secret=args.secret
+            )
 
         elif args.comando == "produce-sqs":
             sqs = get_sqs_client()
@@ -127,10 +111,15 @@ def main() -> None:
 
         elif args.comando == "start-receiver":
             logger.info("Iniciando receptor Webhook HTTP en %s:%s...", args.host, args.port)
-            # revisar despues el iniciador del http
+            uvicorn.run(app, host=args.host, port=args.port)
 
     except* WebhookSignatureError as group:
         logger.error("Errores de firma HMAC en Webhooks (%s):", len(group.exceptions),)
+        for exc in group.exceptions:
+            logger.error("  • %s", exc)
+
+    except* WebhookTimestampError as group:
+        logger.error("Errores de timestamp en Webhooks (%s):", len(group.exceptions),)
         for exc in group.exceptions:
             logger.error("  • %s", exc)
 
@@ -144,9 +133,19 @@ def main() -> None:
         for exc in group.exceptions:
             logger.error("  • %s", exc)
 
+    except* CorruptedMessageError as group:
+        logger.error(
+            "Se detectaron mensajes corruptos en SQS (%s):",
+            len(group.exceptions),
+        )
+        for exc in group.exceptions:
+            logger.error("  • %s", exc)
+
     finally:
         logger.info("Liberando recursos de observabilidad...")
         if hasattr(logger, "listener") and logger.listener:
             logger.listener.stop()
 
-if __name__ == "__main__":main()
+
+if __name__ == "__main__":
+    main()
