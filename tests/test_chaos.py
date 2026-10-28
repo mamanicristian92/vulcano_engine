@@ -25,9 +25,14 @@ from vulcano_telemetry.core_sqs import consume_events, get_sqs_client
 from vulcano_telemetry.exceptions import CorruptedMessageError, WebhookTimestampError
 from vulcano_telemetry.webhook_crypto import generate_signature, verify_signature
 from vulcano_telemetry.webhook_receiver import WEBHOOK_SECRET, app
+import os
+from dotenv import load_dotenv
+
+# Cargar las variables del archivo .env
+load_dotenv()
 
 ENDPOINT = "/webhook"
-LOCALSTACK_ENDPOINT = "http://localhost:4566"
+LOCALSTACK_ENDPOINT = os.getenv("SQS_ENDPOINT_URL")
 CLAVE_INCORRECTA = "clave_hmac_total_incorrecta_para_chaos_987"
 COLA_EVENTOS = "vulcano-events-queue"
 COLA_DLQ = "vulcano-events-dlq"
