@@ -4,10 +4,9 @@ import logging
 import time
 import requests
 
-from .core_sqs import get_sqs_client, consume_events
+from .core_sqs import get_sqs_client, consume_events, delete_event
 from .exceptions import (SQSConnectionError, WebhookDeliveryError, CorruptedMessageError)
 from .webhook_crypto import generate_signature
-from botocore.exceptions import BotoCoreError, ClientError
 
 
 logger = logging.getLogger("vulcano_engine")
@@ -74,44 +73,44 @@ def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,
 
         if not events:
             continue
-
         logger.info("Recibidos %s eventos de SQS.", len(events))
 
         for event in events:
+            message_id = event["message_id"]
+
             try:
                 dispatch_webhook(
                     target_url,
                     secret,
-                    event["body"]
-                )
-
-                try:
-                    sqs_client.delete_message(
-                        QueueUrl=queue_url,
-                        ReceiptHandle=event["receipt_handle"],
-                    )
-                except (BotoCoreError, ClientError) as exc:
-                    raise SQSConnectionError(
-                        f"No se pudo eliminar el mensaje {event['message_id']} de SQS."
-                    ) from exc
-                logger.info(
-                    "Mensaje %s eliminado de SQS tras la entrega.",
-                    event["message_id"],
+                    event["body"],
                 )
 
             except WebhookDeliveryError as exc:
                 logger.error(
-                    "Falló la entrega del mensaje %s: %s",
-                    event["message_id"],
+                    "Fallo en la entrega HTTP del mensaje %s: %s",
+                    message_id,
                     exc,
                 )
-
-            except SQSConnectionError:
-                raise
+                continue
 
             except Exception:
                 logger.exception(
-                    "Error inesperado procesando el mensaje %s."
-                    "Se registra el fallo y se continúa con el siguiente evento.",
-                    event["message_id"],
+                    "Error inesperado al enviar el mensaje %s.",
+                    message_id,
                 )
+                continue
+
+            try:
+                delete_event(
+                    sqs_client,
+                    queue_url,
+                    event["receipt_handle"],
+                    message_id,
+                )
+
+            except SQSConnectionError:
+                logger.exception(
+                    "El webhook del mensaje %s fue entregado correctamente, pero no se pudo eliminar de SQS. Se propaga la excepción.",
+                    message_id,
+                )
+                raise
