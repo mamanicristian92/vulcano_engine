@@ -91,32 +91,7 @@
         python -m pip install -r requirements.txt
         ```
 
-
-4. Levantar Localstack (con Docker instalado y corriendo en el sistema)
-
-    - Desde la carpeta del proyecto:
-
-        ```bash
-        docker compose up -d
-        ```
-    
-    - Revisar que esté en ejecución:
-
-        ```bash
-        docker ps
-        ```
-
-        Nota: Esto crea y levanta localstack; además crea la cola de eventos (si aún no está creada)
-
-5. Levantar API weebhook_receiver
-
-    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
-
-        ```bash
-        python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
-        ```
-
-6. Configurar el archivo .env
+4. Configurar el archivo .env
 
     Copiá el archivo de configuración de ejemplo:
 
@@ -142,19 +117,43 @@
 
 ## Cómo Usar
 
-Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
+1. Levantar Localstack (con Docker instalado y corriendo en el sistema)
 
-- Enviar un mensaje a la cola de eventos:
+    - Desde la carpeta del proyecto:
 
-    ```bash
-    python src/app_operator.py send-webhook
-    ```
+        ```bash
+        docker compose up -d
+        ```
+    
+    - Revisar que esté en ejecución:
 
-- Consumir mensajes de la cola de eventos:
+        ```bash
+        docker ps
+        ```
 
-    ```bash
-    python src/app_operator.py start-dispatcher
-    ```
+        Nota: Esto crea y levanta localstack; además crea la cola de eventos (si aún no está creada)
+
+2. Levantar Receptor HTTP weebhook_receiver
+
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
+
+        ```bash
+        python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
+        ```
+
+3. En otra terminal (con el entorno activado) ejecutamos app_operator.py
+
+    - Enviar un mensaje a la cola de eventos:
+
+        ```bash
+        python src/app_operator.py send-webhook
+        ```
+
+    - Consumir mensajes de la cola de eventos:
+
+        ```bash
+        python src/app_operator.py start-dispatcher
+        ```
 
 #### Anatomía:
 
@@ -163,7 +162,7 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
 |send-webhook     |Enviar un Webhook HTTP de prueba              |
 |start-dispatcher |Consumir eventos de SQS y enviar a Webhooks   |
 |produce-sqs      |Publicar eventos en la cola SQS               |
-|start-receiver   |Publicar eventos en la cola SQS               |
+|start-receiver   |Iniciar el receptor de Webhooks HTTP          |
 
 |Flag       |Short|Description                    |Default                        |
 |-----------|-----|-------------------------------|-------------------------------|
@@ -177,7 +176,7 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
 Usar una clave distinta a la default:
 
 ```bash
-python src/app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
+python src/app_operator.py send-webhook --secret mi_clave_equivocada_no_tan_secreta_456
 ```
 
 *Esto generará un 401 Unauthorized en el webhook_receiver*
