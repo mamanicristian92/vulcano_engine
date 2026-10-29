@@ -1,26 +1,46 @@
-"""Servidor HTTP Receptor de Webhooks utilizando FastAPI y Boto3 LocalStack."""
+"""Recepción y autenticación de webhooks con FastAPI y Amazon SQS.
 
+Valida las firmas HMAC-SHA256 y los timestamps de las solicitudes
+entrantes antes de publicar los eventos autenticados en SQS.
+Compatible con LocalStack para el entorno de desarrollo.
+"""
+import os
 import logging
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, status
 from .webhook_crypto import verify_signature
 from .core_sqs import get_sqs_client, produce_event
 from .exceptions import WebhookSignatureError, WebhookTimestampError
 
+load_dotenv()
 logger = logging.getLogger("vulcano_engine")
 app = FastAPI(title="Vulcano Webhook Receiver")
 
-WEBHOOK_SECRET = "mi_clave_secreta_super_segura_vulcano_123"
-QUEUE_URL = "http://localhost:4566/000000000000/vulcano-events-queue"
-sqs_client = get_sqs_client()
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+QUEUE_NAME = "vulcano-events-queue"
+
+SQS_ENDPOINT_URL = os.getenv(
+    "SQS_ENDPOINT_URL",
+    "http://localhost:4566",
+)
+
+sqs_client = get_sqs_client(SQS_ENDPOINT_URL)
+
+QUEUE_URL = sqs_client.get_queue_url(
+    QueueName=QUEUE_NAME
+)["QueueUrl"]
+
+
+# Impide iniciar el receptor sin el secreto necesario para validar firmas.
+
+if not WEBHOOK_SECRET:
+    raise RuntimeError(
+        "Falta configurar WEBHOOK_SECRET en el entorno."
+    )
 
 @app.post("/webhook", status_code=status.HTTP_202_ACCEPTED)
 async def receive_webhook(request: Request):
-    """
-    Endpoint receptor de Webhooks:
-    1. Lee raw body bytes.
-    2. Valida la firma HMAC y Timestamp.
-    3. Responde HTTP 202 y encola en LocalStack SQS vía Boto3.
-    """
+    
     raw_bytes = await request.body()
     signature_header = request.headers.get("X-Webhook-Signature", "")
 
