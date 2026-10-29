@@ -48,14 +48,19 @@ QUEUE_URL=$(awslocal sqs get-queue-url \
     --query 'QueueUrl' \
     --output text)
 
+
 # 5. Asociar la DLQ a la cola principal
 REDRIVE_POLICY=$(printf \
     '{"deadLetterTargetArn":"%s","maxReceiveCount":"%s"}' \
     "${DLQ_ARN}" "${MAX_RECEIVE_COUNT}")
 
+ATTRIBUTES=$(printf \
+    '{"RedrivePolicy":"%s"}' \
+    "$(printf '%s' "${REDRIVE_POLICY}" | sed 's/"/\\"/g')")
+
 awslocal sqs set-queue-attributes \
     --queue-url "${QUEUE_URL}" \
-    --attributes "{\"RedrivePolicy\":\"${REDRIVE_POLICY}\"}"
+    --attributes "${ATTRIBUTES}"
 
 echo "DLQ '${DLQ_NAME}' asociada a '${QUEUE_NAME}'."
 echo "Máximo de recepciones: ${MAX_RECEIVE_COUNT}"

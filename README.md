@@ -24,24 +24,26 @@
         ```bash
         cd ruta/de/la/carpeta
         ```
+
     2. Clona el repositorio:
         
         ```bash
         git clone git@github.com:mamanicristian92/vulcano_engine.git
         ```
+
+        *Nota: el comando utiliza SSH. Asegurate de tener configurada una clave SSH en GitHub.*
+
     3. Entra al proyecto:
         
         ```bash
         cd vulcano_engine
         ```
 
-2. Instalar dependencias
+2. Entorno virtual:
     
-    1. Crear el entorno virtual
-
-        Dentro de la carpeta del proyecto:
+    1. Crear el entorno (dentro de la carpeta del proyecto):
         
-        - Windows:
+        - Windows (CMD / Powershell):
 
             ```bash
             python -m venv .venv
@@ -53,9 +55,15 @@
             python3 -m venv .venv
             ```
         
-        Esto crea una carpeta llamada `.venv`.
+        *Esto crea una carpeta llamada `.venv`*
     
-    2. Activarlo
+    2. Activar el entorno virtual
+
+        - Windows (CMD):
+
+            ```bash
+            .venv\Scripts\activate
+            ```
 
         - Windows (PowerShell):
 
@@ -75,40 +83,15 @@
             (.venv) $
             ```
 
-    3. Instalar paquetes:
+3. Instalar paquetes:
     
-        - Con el entorno activado:
-
-            ```bash
-            python -m pip install -r requirements.txt
-            ```
-
-
-3. Levantar Localstack (con Docker instalado y corriendo en el sistema)
-
-    - Desde la carpeta del proyecto:
+    - Con el entorno activado:
 
         ```bash
-        docker compose up -d
-        ```
-    
-    - Revisar que esté en ejecución:
-
-        ```bash
-        docker ps
+        python -m pip install -r requirements.txt
         ```
 
-        Nota: Esto crea y levanta localstack y crea la cola de eventos
-
-4. Levantar API weebhook_receiver
-
-    - En otra terminal, con el **entorno activado** y en la carpeta raíz:
-
-        ```bash
-        python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
-        ```
-
-5. Configurar el archivo .env
+4. Configurar el archivo .env
 
     Copiá el archivo de configuración de ejemplo:
 
@@ -124,41 +107,79 @@
         cp .env.example .env
         ```
 
+    - Pon tus claves en el .env
+
+        ```
+        AWS_ACCESS_KEY_ID=
+        AWS_SECRET_ACCESS_KEY=
+        WEBHOOK_SECRET=
+        ```
+
 ## Cómo Usar
 
-Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
+1. Levantar Localstack (con Docker instalado y corriendo en el sistema)
 
-- Enviar un mensaje a la cola de eventos:
+    - Desde la carpeta del proyecto:
 
-    ```bash
-    python app_operator.py
-    ```
+        ```bash
+        docker compose up -d
+        ```
+    
+    - Revisar que esté en ejecución:
 
-- Consumir mensajes de la cola de eventos:
+        ```bash
+        docker ps
+        ```
 
-    ```bash
-    python app_operator.py --mode start-dispatcher
-    ```
+        Nota: Esto crea y levanta localstack; además crea la cola de eventos (si aún no está creada)
 
-Parámetros:
+2. Levantar Receptor HTTP weebhook_receiver
 
-|Flag       |Short|Opciones|Descripción              |Default                        |
-|-----------|-----|--------|-------------------------|-------------------------------|
-|--queue    | -q  |        |Nombre de la cola SQS    |vulcano-events-queue           |
-|--wait-time| -w  |[1-20]  |Tiempo de Long Polling   |                               |
-|--url      |     |        |URL del Webhook Receptor | http://localhost:8000/webhook |
-|--secret   |     |        |Clave secreta HMAC       |                               |
-|--mode     |     |send-webhook <br> start-dispatcher| Modo operativo   | send-webhook      |
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
+
+        ```bash
+        python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
+        ```
+
+3. En otra terminal (con el entorno activado) ejecutamos app_operator.py
+
+    - Enviar un mensaje a la cola de eventos:
+
+        ```bash
+        python src/app_operator.py send-webhook
+        ```
+
+    - Consumir mensajes de la cola de eventos:
+
+        ```bash
+        python src/app_operator.py start-dispatcher
+        ```
+
+#### Anatomía:
+
+|Argument         |Description                                   |
+|-----------------|----------------------------------------------|
+|send-webhook     |Enviar un Webhook HTTP de prueba              |
+|start-dispatcher |Consumir eventos de SQS y enviar a Webhooks   |
+|produce-sqs      |Publicar eventos en la cola SQS               |
+|start-receiver   |Iniciar el receptor de Webhooks HTTP          |
+
+|Flag       |Short|Description                    |Default                        |
+|-----------|-----|-------------------------------|-------------------------------|
+|--queue    | -q  |Nombre de la cola SQS          |vulcano-events-queue           |
+|--wait-time| -w  |Tiempo de Long Polling [1-20]  | 10                            |
+|--url      |     |URL del Webhook Receptor       | WEBHOOK_URL (.env)            |
+|--secret   |     |Clave secreta HMAC             | WEBHOOK_SECRET (.env)         |
 
 **Ejemplo:**
 
-Probar usar una clave distinta a la default:
+Usar una clave distinta a la default:
 
 ```bash
-python app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
+python src/app_operator.py send-webhook --secret mi_clave_equivocada_no_tan_secreta_456
 ```
 
-Esto generará un 401 Unauthorized en el webhook_receiver
+*Esto generará un 401 Unauthorized en el webhook_receiver*
 
 ---
 
