@@ -1,10 +1,10 @@
-
+import os
 import json
 import logging
 import time
 import requests
 
-from .core_sqs import get_sqs_client, consume_events, delete_event
+from .core_sqs import get_sqs_client, receive_events, delete_event
 from .exceptions import (SQSConnectionError, WebhookDeliveryError, CorruptedMessageError)
 from .webhook_crypto import generate_signature
 
@@ -49,7 +49,8 @@ def dispatch_webhook(target_url: str, secret: str, payload_dict: dict,) -> None:
 
 def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,) -> None:
     """Consume eventos de SQS y los despacha a su destino HTTP."""
-    sqs_client = get_sqs_client()
+    sqs_endpoint_url = os.environ.get("SQS_ENDPOINT_URL", "http://localhost:4566")
+    sqs_client = get_sqs_client(sqs_endpoint_url)
 
     logger.info(
         "Despachador iniciado. Cola: %s. Destino: %s",
@@ -59,7 +60,7 @@ def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,
 
     while True:
         try:
-            events = consume_events(
+            events = receive_events(
                 sqs_client,
                 queue_url,
                 wait_time=wait_time,
