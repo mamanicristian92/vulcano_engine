@@ -146,13 +146,7 @@ Las dependencias del proyecto se encuentran declaradas en `requirements.txt`.
     - Desde la carpeta del proyecto:
 
         ```bash
-        docker compose up -d
-        ```
-    
-    - Revisar que esté en ejecución:
-
-        ```bash
-        docker ps
+        docker compose up
         ```
 
         Nota: Esto crea y levanta localstack; además crea la cola de eventos (si aún no está creada)
@@ -162,21 +156,23 @@ Las dependencias del proyecto se encuentran declaradas en `requirements.txt`.
     - En otra terminal (con el **entorno activado** y en la carpeta raíz):
 
         ```bash
-        python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
+        python src/app_operator.py start-receiver
         ```
 
-3. En otra terminal (con el entorno activado) ejecutamos app_operator.py
+3. Ejecutar Despachador de webhooks
 
-    - Enviar un mensaje a la cola de eventos:
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
+
+        ```bash
+        python src/app_operator.py start-dispatcher --url https://webhook.site/095619c6-2d18-4850-9ac1-5c5cc3151f52/200
+        ```
+
+4. Enviar un mensaje:
+
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
 
         ```bash
         python src/app_operator.py send-webhook
-        ```
-
-    - Consumir mensajes de la cola de eventos:
-
-        ```bash
-        python src/app_operator.py start-dispatcher
         ```
 
 #### Anatomía:
@@ -190,7 +186,7 @@ Las dependencias del proyecto se encuentran declaradas en `requirements.txt`.
 
 |Flag       |Short|Description                    |Default                        |
 |-----------|-----|-------------------------------|-------------------------------|
-|--queue    | -q  |Nombre de la cola SQS          |vulcano-events-queue           |
+|--queue    | -q  |Nombre de la cola SQS          | vulcano-events-queue          |
 |--wait-time| -w  |Tiempo de Long Polling [1-20]  | 10                            |
 |--url      |     |URL del Webhook Receptor       | WEBHOOK_URL (.env)            |
 |--secret   |     |Clave secreta HMAC             | WEBHOOK_SECRET (.env)         |
