@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Envío de Webhook de prueba
     test_parser = subparsers.add_parser("send-webhook", help="Enviar un Webhook HTTP de prueba",)
-    test_parser.add_argument("--url", type=parse_webhook_url, default="http://localhost:8000/webhook", help="URL del Webhook Receptor",)
+    test_parser.add_argument("--url", type=parse_webhook_url, default="https://webhook.site/095619c6-2d18-4850-9ac1-5c5cc3151f52/200", help="URL del Webhook Receptor",)
     test_parser.add_argument("--secret", type=parse_secret_key, default=None, help="Clave secreta HMAC",)
 
     return parser
