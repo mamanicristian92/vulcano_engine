@@ -24,7 +24,7 @@ def get_sqs_client(endpoint_url: str = "http://localhost:4566"):
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test")
     )
 
-def produce_event(sqs_client, queue_url: str, event_data: dict,topic: str="vulcano.payments.events", trace_id:str | None=None) -> str:
+def send_event(sqs_client, queue_url: str, event_data: dict,topic: str="vulcano.payments.events", trace_id:str | None=None) -> str:
     """Publica un evento estructurado en la cola de SQS usando Boto3."""
     timestamp = datetime.now(timezone.utc).isoformat()
     trace_id = trace_id or uuid.uuid4().hex
@@ -48,7 +48,7 @@ def produce_event(sqs_client, queue_url: str, event_data: dict,topic: str="vulca
         sqs_err.add_note(f"QueueUrl: {queue_url}")
         raise sqs_err from err
 
-def consume_events(sqs_client, queue_url: str, wait_time: int = 10, max_messages: int = 5, visibility_timeout: int = 30):
+def receive_events(sqs_client, queue_url: str, wait_time: int = 10, max_messages: int = 5, visibility_timeout: int = 30):
     """Consume mensajes de SQS aplicando Long Polling."""
     try:
         response = sqs_client.receive_message(

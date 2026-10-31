@@ -1,15 +1,39 @@
 # Proyecto Vulcano
 
+Vulcano Engine es un sistema de recepción, procesamiento y despacho de eventos mediante webhooks, desarrollado en Python. Su arquitectura utiliza Amazon SQS para gestionar el procesamiento asíncrono de mensajes, permitiendo desacoplar la recepción de eventos de su posterior distribución.
 
-### Características
+Contempla mecanismos de validación de firmas HMAC para verificar la autenticidad e integridad de los webhooks, gestión de mensajes fallidos mediante Dead Letter Queue (DLQ) y registro de eventos para facilitar la trazabilidad y el análisis de errores.
 
+El proyecto utiliza LocalStack para emular los servicios de AWS durante el desarrollo y las pruebas locales.
 
+### Componentes principales
 
-### Tecnologías
+- **Webhook Receiver**: recibe solicitudes HTTP, valida su firma y publica los eventos en una cola SQS.
+- **SQS**: almacena los eventos para su procesamiento asíncrono.
+- **Dispatcher**: consume los mensajes de la cola y los reenvía al destino configurado.
+- **Dead Letter Queue (DLQ)**: recibe los mensajes que superan el límite de intentos de procesamiento.
+- **Logging**: registra información de ejecución y eventos relevantes para facilitar el seguimiento y diagnóstico.
 
-- Python
-- pip
-- boto3
+### Tecnologías utilizadas
+
+El proyecto utiliza las siguientes tecnologías y herramientas:
+
+| Tecnología      | Uso |
+|-----------------|-----|
+| Python          | Lenguaje principal de desarrollo. |
+| FastAPI         | Desarrollo del endpoint HTTP para la recepción de webhooks. |
+| Uvicorn         | Servidor ASGI para ejecutar la aplicación FastAPI. |
+| Amazon SQS      | Servicio de colas utilizado para la gestión asíncrona de eventos. |
+| Boto3 / Botocore| SDK de AWS para interactuar con los servicios de SQS. |
+| LocalStack      | Emulación local de servicios de AWS durante el desarrollo y las pruebas. |
+| Docker Compose  | Configuración y ejecución del entorno local de LocalStack. |
+| Requests        | Envío de solicitudes HTTP durante el despacho de eventos. |
+| Python-dotenv   | Carga de variables de entorno desde archivos `.env`. |
+| Pytest          | Ejecución de pruebas automatizadas. |
+
+### Dependencias principales
+
+Las dependencias del proyecto se encuentran declaradas en `requirements.txt`.
 
 ### Requisitos
 
@@ -91,32 +115,7 @@
         python -m pip install -r requirements.txt
         ```
 
-
-4. Levantar Localstack (con Docker instalado y corriendo en el sistema)
-
-    - Desde la carpeta del proyecto:
-
-        ```bash
-        docker compose up -d
-        ```
-    
-    - Revisar que esté en ejecución:
-
-        ```bash
-        docker ps
-        ```
-
-        Nota: Esto crea y levanta localstack; además crea la cola de eventos (si aún no está creada)
-
-5. Levantar API weebhook_receiver
-
-    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
-
-        ```bash
-        python -m uvicorn src.vulcano_telemetry.webhook_receiver:app --reload
-        ```
-
-6. Configurar el archivo .env
+4. Configurar el archivo .env
 
     Copiá el archivo de configuración de ejemplo:
 
@@ -142,19 +141,39 @@
 
 ## Cómo Usar
 
-Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
+1. Levantar Localstack (con Docker instalado y corriendo en el sistema)
 
-- Enviar un mensaje a la cola de eventos:
+    - Desde la carpeta del proyecto:
 
-    ```bash
-    python src/app_operator.py send-webhook
-    ```
+        ```bash
+        docker compose up
+        ```
 
-- Consumir mensajes de la cola de eventos:
+        Nota: Esto crea y levanta localstack; además crea la cola de eventos (si aún no está creada)
 
-    ```bash
-    python src/app_operator.py start-dispatcher
-    ```
+2. Levantar Receptor HTTP weebhook_receiver
+
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
+
+        ```bash
+        python src/app_operator.py start-receiver
+        ```
+
+3. Ejecutar Despachador de webhooks
+
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
+
+        ```bash
+        python src/app_operator.py start-dispatcher --url https://webhook.site/095619c6-2d18-4850-9ac1-5c5cc3151f52/200
+        ```
+
+4. Enviar un mensaje:
+
+    - En otra terminal (con el **entorno activado** y en la carpeta raíz):
+
+        ```bash
+        python src/app_operator.py send-webhook
+        ```
 
 #### Anatomía:
 
@@ -163,11 +182,11 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
 |send-webhook     |Enviar un Webhook HTTP de prueba              |
 |start-dispatcher |Consumir eventos de SQS y enviar a Webhooks   |
 |produce-sqs      |Publicar eventos en la cola SQS               |
-|start-receiver   |Publicar eventos en la cola SQS               |
+|start-receiver   |Iniciar el receptor de Webhooks HTTP          |
 
 |Flag       |Short|Description                    |Default                        |
 |-----------|-----|-------------------------------|-------------------------------|
-|--queue    | -q  |Nombre de la cola SQS          |vulcano-events-queue           |
+|--queue    | -q  |Nombre de la cola SQS          | vulcano-events-queue          |
 |--wait-time| -w  |Tiempo de Long Polling [1-20]  | 10                            |
 |--url      |     |URL del Webhook Receptor       | WEBHOOK_URL (.env)            |
 |--secret   |     |Clave secreta HMAC             | WEBHOOK_SECRET (.env)         |
@@ -177,7 +196,7 @@ Con Localstack y la API en ejecución, podemos ejecutar app_operator.py
 Usar una clave distinta a la default:
 
 ```bash
-python src/app_operator.py --secret mi_clave_equivocada_no_tan_secreta_456
+python src/app_operator.py send-webhook --secret mi_clave_equivocada_no_tan_secreta_456
 ```
 
 *Esto generará un 401 Unauthorized en el webhook_receiver*
@@ -222,7 +241,7 @@ flowchart TD
     E(start-dispatcher)
     E --> |"consume_events(max_msg,..)" | J
     
-    K[loggin_engine.py]
+    K[logging_engine.py]
     L[sanitizer.py]
 
     M["Localstack (AWS)"]
