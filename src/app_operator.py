@@ -1,20 +1,24 @@
-import os
+import sys
 import argparse
 import uvicorn
 import time
 import requests
 
-from dotenv import load_dotenv
-from vulcano_telemetry.webhook_receiver import app
+from vulcano_telemetry.config import (
+    SQS_ENDPOINT_URL,
+    DISPATCHER_TARGET_URL,
+    WEBHOOK_URL,
+    WEBHOOK_SECRET,
+    WAIT_TIME_SECONDS
+)
 from vulcano_telemetry.sanitizer import parse_queue_name, parse_wait_time, parse_webhook_url, parse_secret_key
-from vulcano_telemetry.core_sqs import get_sqs_client, produce_event
+from vulcano_telemetry.core_sqs import get_sqs_client, send_event
 from vulcano_telemetry.webhook_crypto import generate_signature
 from vulcano_telemetry.logging_engine import setup_vulcano_logging
 from vulcano_telemetry.dispatch_webhook import run_dispatcher
-from vulcano_telemetry.exceptions import (SQSConnectionError, WebhookSignatureError, WebhookTimestampError, WebhookDeliveryError, CorruptedMessageError)
+from vulcano_telemetry.exceptions import (SQSConnectionError, WebhookSignatureError, WebhookTimestampError, WebhookDeliveryError)
 from botocore.exceptions import BotoCoreError, ClientError
 
-load_dotenv()  # Cargar variables de entorno desde .env
 
 logger = setup_vulcano_logging()
 
@@ -36,13 +40,13 @@ def build_parser() -> argparse.ArgumentParser:
     # Despachador de eventos
     dispatcher_parser = subparsers.add_parser("start-dispatcher", help="Consumir eventos de SQS y enviar a Webhooks",)
     dispatcher_parser.add_argument("-q", "--queue", type=parse_queue_name, default="vulcano-events-queue", help="Nombre de la cola SQS",)
-    dispatcher_parser.add_argument("-w", "--wait-time", type=parse_wait_time, default=10, help="Tiempo de Long Polling (1-20s)",)
-    dispatcher_parser.add_argument("--url", type=parse_webhook_url, default="http://localhost:8000/webhook", help="URL del Webhook Receptor",)
+    dispatcher_parser.add_argument("-w", "--wait-time", type=parse_wait_time, default=WAIT_TIME_SECONDS, help="Tiempo de Long Polling (1-20s)",)
+    dispatcher_parser.add_argument("--url", type=parse_webhook_url, default=DISPATCHER_TARGET_URL, help="URL de destino para entregar los eventos",)
     dispatcher_parser.add_argument("--secret", type=parse_secret_key, default=None, help="Clave secreta HMAC",)
 
     # Envío de Webhook de prueba
     test_parser = subparsers.add_parser("send-webhook", help="Enviar un Webhook HTTP de prueba",)
-    test_parser.add_argument("--url", type=parse_webhook_url, default="http://localhost:8000/webhook", help="URL del Webhook Receptor",)
+    test_parser.add_argument("--url", type=parse_webhook_url, default=WEBHOOK_URL, help="URL del Webhook Receptor",)
     test_parser.add_argument("--secret", type=parse_secret_key, default=None, help="Clave secreta HMAC",)
 
     return parser
@@ -72,12 +76,10 @@ def send_test_webhook(target_url: str, secret: str) -> None:
     logger.info("Respuesta del receptor Webhook HTTP %s: %s", response.status_code, result)
 
 
-def resolve_queue_url(queue_name: str) -> str:
+def resolve_queue_url(sqs_client, queue_name: str) -> str:
     """Obtiene la URL real de una cola existente en LocalStack."""
-    sqs = get_sqs_client()
-
     try:
-        response = sqs.get_queue_url(QueueName=queue_name)
+        response = sqs_client.get_queue_url(QueueName=queue_name)
         return response["QueueUrl"]
 
     except (BotoCoreError, ClientError) as exc:
@@ -88,10 +90,15 @@ def resolve_queue_url(queue_name: str) -> str:
 
 def main() -> None:
     parser = build_parser()
+
     args = parser.parse_args()
 
     if args.comando in ("send-webhook", "start-dispatcher"):
-        secret = args.secret or os.environ.get("WEBHOOK_SECRET")
+
+        if not args.url:
+            parser.error("Debes configurar la URL correspondiente en .env o usar --url")
+
+        secret = args.secret or WEBHOOK_SECRET
 
         if not secret:
             parser.error("Configura WEBHOOK_SECRET en variables de entorno o usa --secret")
@@ -108,8 +115,10 @@ def main() -> None:
             send_test_webhook(args.url, args.secret)
 
         elif args.comando == "start-dispatcher":
-            queue_url = resolve_queue_url(args.queue)
+            sqs = get_sqs_client(SQS_ENDPOINT_URL)
+            queue_url = resolve_queue_url(sqs, args.queue)
             run_dispatcher(
+                sqs_client=sqs,
                 queue_url=queue_url,
                 wait_time=args.wait_time,
                 target_url=args.url,
@@ -117,15 +126,18 @@ def main() -> None:
             )
 
         elif args.comando == "produce-sqs":
-            sqs = get_sqs_client()
-            queue_url = resolve_queue_url(args.queue)
+            sqs = get_sqs_client(SQS_ENDPOINT_URL)
+            queue_url = resolve_queue_url(sqs, args.queue)
             event_data = {"transaction_id": "tx_9981", "amount": 350.00, "status": "COMPLETED"}
 
-            message_id = produce_event(sqs, queue_url, event_data)
+            message_id = send_event(sqs, queue_url, event_data)
 
             logger.info("Evento publicado correctamente en la cola '%s'. Message_id: %s", args.queue, message_id)
 
+            print(f"Evento publicado correctamente en SQS. Message_id: {message_id}")
+
         elif args.comando == "start-receiver":
+            from vulcano_telemetry.webhook_receiver import app
             logger.info("Iniciando receptor Webhook HTTP en %s:%s...", args.host, args.port)
             uvicorn.run(app, host=args.host, port=args.port)
 
@@ -133,34 +145,32 @@ def main() -> None:
         logger.error("Errores de firma HMAC en Webhooks (%s):", len(group.exceptions),)
         for exc in group.exceptions:
             logger.error("  • %s", exc)
+        raise
 
     except* WebhookTimestampError as group:
         logger.error("Errores de timestamp en Webhooks (%s):", len(group.exceptions),)
         for exc in group.exceptions:
             logger.error("  • %s", exc)
+        raise
 
     except* SQSConnectionError as group:
         logger.error("Errores de comunicación con SQS LocalStack (%s):", len(group.exceptions),)
         for exc in group.exceptions:
             logger.error("  • %s", exc)
+        raise
 
     except* WebhookDeliveryError as group:
         logger.error("Errores de entrega de Webhooks (%s):", len(group.exceptions),)
         for exc in group.exceptions:
             logger.error("  • %s", exc)
-
-    except* CorruptedMessageError as group:
-        logger.error(
-            "Se detectaron mensajes corruptos en SQS (%s):",
-            len(group.exceptions),
-        )
-        for exc in group.exceptions:
-            logger.error("  • %s", exc)
+        raise SystemExit(1)
 
     except* Exception as group:
         logger.error("Se produjeron errores inesperados durarte la ejecucion")
+
         for exc in group.exceptions:
             logger.error("  • %s", exc)
+        raise
 
     finally:
         logger.info("Liberando recursos de observabilidad...")
@@ -170,4 +180,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ExceptionGroup as group:
+        for exc in group.exceptions:
+            print(f"ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
