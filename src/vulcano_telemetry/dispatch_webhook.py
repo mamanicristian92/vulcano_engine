@@ -1,10 +1,10 @@
-import os
+
 import json
 import logging
 import time
 import requests
 
-from .core_sqs import get_sqs_client, receive_events, delete_event
+from .core_sqs import receive_events, delete_event
 from .exceptions import (SQSConnectionError, WebhookDeliveryError, CorruptedMessageError)
 from .webhook_crypto import generate_signature
 
@@ -47,11 +47,8 @@ def dispatch_webhook(target_url: str, secret: str, payload_dict: dict,) -> None:
     )
 
 
-def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,) -> None:
+def run_dispatcher(sqs_client, queue_url: str, wait_time: int, target_url: str, secret: str,) -> None:
     """Consume eventos de SQS y los despacha a su destino HTTP."""
-    sqs_endpoint_url = os.environ.get("SQS_ENDPOINT_URL", "http://localhost:4566")
-    sqs_client = get_sqs_client(sqs_endpoint_url)
-
     logger.info(
         "Despachador iniciado. Cola: %s. Destino: %s",
         queue_url,
@@ -67,10 +64,10 @@ def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,
             )
         except CorruptedMessageError:
             logger.exception(
-                "Error al consumir eventos: se detectó un mensaje "
-                "corrupto en SQS. Se propaga la excepción."
+                "Se detecto un mensaje corrupto en SQS. "
+                "Se reintentara en el proximo ciclo."
             )
-            raise
+            continue
 
         if not events:
             continue
@@ -99,7 +96,7 @@ def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,
                     "Error inesperado al enviar el mensaje %s.",
                     message_id,
                 )
-                continue
+                raise
 
             try:
                 delete_event(
@@ -111,7 +108,8 @@ def run_dispatcher(queue_url: str, wait_time: int, target_url: str, secret: str,
 
             except SQSConnectionError:
                 logger.exception(
-                    "El webhook del mensaje %s fue entregado correctamente, pero no se pudo eliminar de SQS. Se propaga la excepción.",
+                    "El webhook del mensaje %s fue entregado correctamente, ",
+                    "Pero no se pudo eliminar de SQS.",
                     message_id,
                 )
                 raise
