@@ -11,7 +11,7 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, status
 from .webhook_crypto import verify_signature
-from .core_sqs import get_sqs_client, send_event
+from .core_sqs import get_sqs_client, send_events
 from .exceptions import WebhookSignatureError, WebhookTimestampError, SQSConnectionError
 
 # Cargamos variables de entorno e inicializamos el logger.
@@ -87,7 +87,7 @@ async def receive_webhook(request: Request):
 
     # Publicamos el evento autenticado en la cola de SQS.
     try:
-        msg_id = send_event(sqs_client, QUEUE_URL, payload)
+        msg_id = send_events(sqs_client, QUEUE_URL, payload)
     except SQSConnectionError as err:
         logger.error("Error al publicar el evento en SQS: %s", err)
         raise HTTPException(
