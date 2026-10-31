@@ -16,7 +16,7 @@ from .exceptions import WebhookSignatureError, WebhookTimestampError
 
 # Cargamos variables de entorno e inicializamos el logger.
 load_dotenv()
-logger = setup_vulcano_logging()
+logger = logging.getLogger("vulcano_engine")
 
 # Asignamos la API.
 app = FastAPI(title="Vulcano Webhook Receiver")
