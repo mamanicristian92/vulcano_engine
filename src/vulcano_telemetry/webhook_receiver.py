@@ -11,7 +11,7 @@ from .logging_engine import setup_vulcano_logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, status
 from .webhook_crypto import verify_signature
-from .core_sqs import get_sqs_client, produce_event
+from .core_sqs import get_sqs_client, send_events
 from .exceptions import WebhookSignatureError, WebhookTimestampError
 
 # Cargamos variables de entorno e inicializamos el logger.
@@ -56,7 +56,7 @@ async def receive_webhook(request: Request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(err))
 
     payload = await request.json()
-    msg_id = produce_event(sqs_client, QUEUE_URL, payload)
+    msg_id = send_events(sqs_client, QUEUE_URL, payload)
     
     logger.info(
         "Webhook verificado y encolado exitosamente en SQS. MessageId: %s",
