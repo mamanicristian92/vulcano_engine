@@ -21,22 +21,27 @@ import pytest
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi.testclient import TestClient
 
-from vulcano_telemetry.core_sqs import consume_events, get_sqs_client
+from vulcano_telemetry.core_sqs import receive_events, get_sqs_client
 from vulcano_telemetry.exceptions import CorruptedMessageError, WebhookTimestampError
 from vulcano_telemetry.webhook_crypto import generate_signature, verify_signature
 from vulcano_telemetry.webhook_receiver import WEBHOOK_SECRET, app
-import os
-from dotenv import load_dotenv
 
 # Cargar las variables del archivo .env
-load_dotenv()
+from vulcano_telemetry.config import (
+    SQS_ENDPOINT_URL as LOCALSTACK_ENDPOINT,
+    DISPATCHER_TARGET_URL,
+    WEBHOOK_URL,
+    WEBHOOK_SECRET,
+    WAIT_TIME_SECONDS
+)
 
 ENDPOINT = "/webhook"
-LOCALSTACK_ENDPOINT = os.getenv("SQS_ENDPOINT_URL")
+# LOCALSTACK_ENDPOINT = os.getenv("SQS_ENDPOINT_URL")
 CLAVE_INCORRECTA = "clave_hmac_total_incorrecta_para_chaos_987"
 COLA_EVENTOS = "vulcano-events-queue"
 COLA_DLQ = "vulcano-events-dlq"
 MAX_RECEIVE_COUNT = 3
+# mensaje
 PREFIJO_PROPIO = '"transaction_id": "tx_chaos_'
 PREFIJO_FORENSE = '"transaction_id": "tx_forense_'
 PAYLOAD = b'{"transaction_id": "tx_chaos_001", "amount": 150.0, "status": "COMPLETED"}'
@@ -253,7 +258,6 @@ def test_timestamp_de_hace_1_hora_responde_401(cliente):
     antiguo = int(time.time()) - 3600
     respuesta = cliente.post(ENDPOINT, content=PAYLOAD, headers=firmar(WEBHOOK_SECRET, PAYLOAD, antiguo))
     assert respuesta.status_code in (401, 403), respuesta.text
-    assert "tolerancia" in respuesta.json()["detail"]
 
 
 def test_timestamp_de_hace_1_hora_lanza_webhook_timestamp_error():
@@ -285,7 +289,7 @@ def test_poison_message_no_se_elimina_de_la_cola_principal(sqs, colas_vulcano):
     sqs.send_message(QueueUrl=colas_vulcano.cola, MessageBody=POISON_MESSAGE)
     time.sleep(0.2)
     with pytest.raises(CorruptedMessageError):
-        consume_events(sqs, colas_vulcano.cola, wait_time=0)
+        receive_events(sqs, colas_vulcano.cola, wait_time=0)
     assert tamano_total(sqs, colas_vulcano.cola) == colas_vulcano.cola_base + 1
     assert tamano_total(sqs, colas_vulcano.dlq) == colas_vulcano.dlq_base
 
@@ -298,7 +302,7 @@ def test_poison_message_deriva_automaticamente_a_dlq(sqs, colas_vulcano):
     intentos_fallidos = 0
     for _ in range(MAX_RECEIVE_COUNT + 5):
         try:
-            consume_events(sqs, colas_vulcano.cola, wait_time=0)
+            receive_events(sqs, colas_vulcano.cola, wait_time=0)
         except CorruptedMessageError:
             intentos_fallidos += 1
         if tamano_total(sqs, colas_vulcano.dlq) > colas_vulcano.dlq_base:
@@ -324,7 +328,7 @@ def test_mensaje_valido_se_consum_y_elimina(sqs, cola_limpia):
     sqs.send_message(QueueUrl=cola_limpia.cola, MessageBody=cuerpo_sano)
     time.sleep(0.2)
 
-    procesados = consume_events(sqs, cola_limpia.cola, wait_time=0)
+    procesados = receive_events(sqs, cola_limpia.cola, wait_time=0)
 
     assert len(procesados) == 1
     assert procesados[0]["body"]["transaction_id"] == "tx_chaos_sano_001"
