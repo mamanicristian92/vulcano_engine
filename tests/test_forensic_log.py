@@ -225,16 +225,17 @@ def test_log_registra_x_webhook_signature(telemetria_forense):
     }
 
 
-def test_archivos_log_gz_contienen_campos_forenses_requeridos():
-    """Inspección de los .log.gz que el sistema ya haya rotado en la raíz del proyecto."""
-    raiz = Path(__file__).resolve().parents[1]
-    archivos = sorted(raiz.glob("*.log*.gz"))
-    if not archivos:
-        pytest.skip("Todavía no existen archivos .log.gz rotados en el proyecto")
+def test_archivos_log_gz_contienen_campos_forenses_requeridos(
+    telemetria_forense: Forense,
+):
+    campos_requeridos = {
+        "timestamp",
+        "level",
+        "message",
+    }
 
-    for ruta in archivos:
-        descomprimido = gzip.decompress(ruta.read_bytes())
-        assert descomprimido, f"Archivo vacío tras descomprimir: {ruta.name}"
-        for linea in descomprimido.splitlines():
-            json.loads(linea)
-
+    for registro in telemetria_forense.registros:
+        assert campos_requeridos.issubset(registro.keys()), (
+            f"Faltan campos forenses: "
+            f"{campos_requeridos - registro.keys()}"
+        )

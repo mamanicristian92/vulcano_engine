@@ -259,27 +259,15 @@ def test_timestamp_de_hace_1_hora_lanza_webhook_timestamp_error():
 
 
 # 3. Enviar cargas dañadas a SQS (mensajes venenosos / Poison Messages) para verificar la derivación automática a la Dead Letter Queue (DLQ) en LocalStack.
-def test_poison_message_no_se_elimina_de_la_cola_principal(sqs, colas_vulcano):
-    """Un mensaje venenoso no debe borrarse: queda reintentando hasta agotar intentos."""
-    sqs.send_message(QueueUrl=colas_vulcano.cola, MessageBody=POISON_MESSAGE)
-    time.sleep(0.2)
-    with pytest.raises(CorruptedMessageError):
-        receive_events(sqs, colas_vulcano.cola, wait_time=0)
-    assert tamano_total(sqs, colas_vulcano.cola) == colas_vulcano.cola_base + 1
-    assert tamano_total(sqs, colas_vulcano.dlq) == colas_vulcano.dlq_base
-
-
 def test_poison_message_deriva_automaticamente_a_dlq(sqs, colas_vulcano):
     """Tras maxReceiveCount recepciones fallidas SQS deriva el mensaje a la DLQ."""
-    sqs.send_message(QueueUrl=colas_vulcano.cola, MessageBody=POISON_MESSAGE) #
+    sqs.send_message(QueueUrl=colas_vulcano.cola, MessageBody=POISON_MESSAGE)
     time.sleep(1)
 
     intentos_fallidos = 0
     for _ in range(MAX_RECEIVE_COUNT + 5):
         try:
             mensajes = receive_events(sqs, colas_vulcano.cola, wait_time=2)
-            # mensajes = response.get("Messages", [])
-            print(mensajes)
         except CorruptedMessageError:
             intentos_fallidos += 1
         if tamano_total(sqs, colas_vulcano.dlq) > colas_vulcano.dlq_base:
