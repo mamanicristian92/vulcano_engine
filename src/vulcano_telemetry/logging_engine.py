@@ -9,18 +9,7 @@ import queue
 import shutil
 from datetime import datetime, timezone
 
-class AsyncJSONFormatter(logging.Formatter):
-    """Formateador JSON estructurado conforme a ISO 8601 UTC."""
-    def format(self, record: logging.LogRecord) -> str:
-        log_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "logger": record.name,
-            "level": record.levelname,
-            "message": record.getMessage(),
-            "process_id": record.process,
-            "thread_name": record.threadName,
-            "taskName": getattr(record, "taskName", None),
-        }
+
         
 class AsyncJSONFormatter(logging.Formatter):
     """Formateador JSON estructurado conforme a ISO 8601 UTC."""
