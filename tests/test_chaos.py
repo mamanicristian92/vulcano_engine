@@ -21,10 +21,10 @@ import pytest
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi.testclient import TestClient
 
-from vulcano_telemetry.core_sqs import receive_events, get_sqs_client
+from vulcano_telemetry.core_sqs import receive_events, get_sqs_client, delete_event
 from vulcano_telemetry.exceptions import CorruptedMessageError, WebhookTimestampError
 from vulcano_telemetry.webhook_crypto import generate_signature, verify_signature
-from vulcano_telemetry.webhook_receiver import WEBHOOK_SECRET, app
+from vulcano_telemetry.webhook_receiver import app
 
 # Cargar las variables del archivo .env
 from vulcano_telemetry.config import (
@@ -46,7 +46,9 @@ PREFIJO_PROPIO = '"transaction_id": "tx_chaos_'
 PREFIJO_FORENSE = '"transaction_id": "tx_forense_'
 PAYLOAD = b'{"transaction_id": "tx_chaos_001", "amount": 150.0, "status": "COMPLETED"}'
 PAYLOAD_ALTERADO = b'{"transaction_id": "tx_chaos_001", "amount": 999999.99, "status": "COMPLETED"}'
-POISON_MESSAGE = '{"transaction_id": "tx_chaos_poison_001", "amount": '
+POISON_MESSAGE = '{"transaction_id": "tx_chaos_poison_001", "amount"'
+
+TIMEOUT_DISPATCHER = 20  # segundos máximos para esperar el procesamiento
 
 
 def firmar(secret: str, body: bytes, timestamp: int = None) -> dict:
@@ -165,7 +167,7 @@ def cola_eventos(sqs) -> SimpleNamespace:
         pytest.skip(f"La cola '{COLA_EVENTOS}' no esta creada por el script de LocalStack")
 
     yield SimpleNamespace(url=cola_url)
-    drenar(sqs, cola_url)
+    drenar(sqs, cola_url)   # elimina de la cola los mensajes propios del test
 
 
 @pytest.fixture
@@ -189,7 +191,7 @@ def colas_vulcano(cola_limpia, sqs) -> SimpleNamespace:
     en cero para no esperar los 30 s por recepcion y lo restaura siempre al cerrar.
     Nunca crea, borra ni purga colas.
     """
-    dlq_url = resolver_cola(sqs, COLA_DLQ)
+    dlq_url = resolver_cola(sqs, COLA_DLQ)  # verifica que COLA_DLQ exista
     if dlq_url is None:
         pytest.skip(f"La cola '{COLA_DLQ}' no esta creada por el script de LocalStack")
 
@@ -199,18 +201,18 @@ def colas_vulcano(cola_limpia, sqs) -> SimpleNamespace:
             "el init script 01-create-resource.sh no llego a aplicarla"
         )
 
-    drenar(sqs, dlq_url)
-    dlq_base = tamano_total(sqs, dlq_url)
+    drenar(sqs, dlq_url)    # elimina los mensjes propios de
+    dlq_base = tamano_total(sqs, dlq_url)   # verifica que la cola esté vacía, puede skipear
     visibilidad_original = atributos(sqs, cola_limpia.cola, "VisibilityTimeout").get(
         "VisibilityTimeout", "30"
     )
     sqs.set_queue_attributes(QueueUrl=cola_limpia.cola, Attributes={"VisibilityTimeout": "0"})
 
     yield SimpleNamespace(
-        cola=cola_limpia.cola,
-        dlq=dlq_url,
-        cola_base=cola_limpia.cola_base,
-        dlq_base=dlq_base,
+        cola=cola_limpia.cola,  # url de cola
+        dlq=dlq_url,            # url de dlq
+        cola_base=cola_limpia.cola_base,    # 0 si está vacía
+        dlq_base=dlq_base,      #0 si dlq está
     )
 
     sqs.set_queue_attributes(QueueUrl=cola_limpia.cola, Attributes={"VisibilityTimeout": visibilidad_original})
@@ -296,19 +298,21 @@ def test_poison_message_no_se_elimina_de_la_cola_principal(sqs, colas_vulcano):
 
 def test_poison_message_deriva_automaticamente_a_dlq(sqs, colas_vulcano):
     """Tras maxReceiveCount recepciones fallidas SQS deriva el mensaje a la DLQ."""
-    sqs.send_message(QueueUrl=colas_vulcano.cola, MessageBody=POISON_MESSAGE)
-    time.sleep(0.2)
+    sqs.send_message(QueueUrl=colas_vulcano.cola, MessageBody=POISON_MESSAGE) #
+    time.sleep(1)
 
     intentos_fallidos = 0
     for _ in range(MAX_RECEIVE_COUNT + 5):
         try:
-            receive_events(sqs, colas_vulcano.cola, wait_time=0)
+            mensajes = receive_events(sqs, colas_vulcano.cola, wait_time=2)
+            # mensajes = response.get("Messages", [])
+            print(mensajes)
         except CorruptedMessageError:
             intentos_fallidos += 1
         if tamano_total(sqs, colas_vulcano.dlq) > colas_vulcano.dlq_base:
             break
         time.sleep(0.1)
-
+    
     assert intentos_fallidos == MAX_RECEIVE_COUNT
     assert tamano_total(sqs, colas_vulcano.cola) == colas_vulcano.cola_base
     assert tamano_total(sqs, colas_vulcano.dlq) == colas_vulcano.dlq_base + 1
@@ -320,16 +324,38 @@ def test_poison_message_deriva_automaticamente_a_dlq(sqs, colas_vulcano):
         VisibilityTimeout=0,
     ).get("Messages", [])
     assert POISON_MESSAGE in [mensaje["Body"] for mensaje in recibidos]
-
+    
 
 def test_mensaje_valido_se_consum_y_elimina(sqs, cola_limpia):
-    """Caso de control: los mensajes sanos siguen procesandose y borrandonse."""
-    cuerpo_sano = json.dumps({"transaction_id": "tx_chaos_sano_001", "status": "COMPLETED"})
-    sqs.send_message(QueueUrl=cola_limpia.cola, MessageBody=cuerpo_sano)
-    time.sleep(0.2)
+    """Integración: el dispatcher entrega y elimina un mensaje válido de SQS."""
 
-    procesados = receive_events(sqs, cola_limpia.cola, wait_time=0)
+    assert DISPATCHER_TARGET_URL, "Falta configurar DISPATCHER_TARGET_URL"
+    assert WEBHOOK_SECRET, "Falta configurar WEBHOOK_SECRET"
 
-    assert len(procesados) == 1
-    assert procesados[0]["body"]["transaction_id"] == "tx_chaos_sano_001"
-    assert tamano_total(sqs, cola_limpia.cola) == cola_limpia.cola_base
+    cuerpo_sano = json.dumps({
+        "transaction_id": "tx_chaos_sano_001",
+        "status": "COMPLETED"
+    })
+
+    # Publicar el mensaje en la cola.
+    respuesta = sqs.send_message(
+        QueueUrl=cola_limpia.cola,
+        MessageBody=cuerpo_sano
+    )
+
+    message_id = respuesta["MessageId"]
+
+    # Esperar a que run_dispatcher() procese y elimine el mensaje.
+    limite = time.monotonic() + TIMEOUT_DISPATCHER
+
+    while time.monotonic() < limite:
+        if tamano_total(sqs, cola_limpia.cola) == cola_limpia.cola_base:
+            break
+
+        time.sleep(0.2)
+
+    # El mensaje debe haber desaparecido de la cola.
+    assert tamano_total(sqs, cola_limpia.cola) == cola_limpia.cola_base, (
+        f"El dispatcher no eliminó el mensaje {message_id} "
+        f"en {TIMEOUT_DISPATCHER} segundos."
+    )
