@@ -179,7 +179,6 @@ for branch in "${branches[@]}"; do
                 current+=("$branch")
             fi
         fi
-
     else
         # Diferenciar divergencia de otros errores.
         if git merge-base --is-ancestor "$upstream" HEAD ||
