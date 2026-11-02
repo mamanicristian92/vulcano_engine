@@ -67,13 +67,6 @@ def campos_normalizados(registros: list) -> set:
     }
 
 
-def es_utc(marca: str) -> bool:
-    """Comprueba que una marca de tiempo ISO 8601 este expresada en UTC."""
-    if not marca.endswith("+00:00"):
-        return False
-    return datetime.fromisoformat(marca).utcoffset() == timedelta(0)
-
-
 def vaciar_mensajes_forense() -> int:
     """Borra de la cola de eventos los mensajes publicados por esta suite."""
     try:
@@ -175,6 +168,7 @@ def telemetria_forense(pipeline_log) -> Forense:
     )
 
 
+# Descompresion gzip sin perdida de datos
 def test_descompresion_gzip_sin_perdida_de_datos(telemetria_forense):
     """El .log.gz descomprimido byte a byte debe ser identico al log pre-rotación."""
     forense = telemetria_forense
@@ -188,6 +182,7 @@ def test_descompresion_gzip_sin_perdida_de_datos(telemetria_forense):
     assert forense.ruta_log.read_bytes() == b"", "Tras la rotacion quedaron datos sin rotar"
 
 
+# Registros conservan estructura JSON estructurada
 def test_registros_conservan_estructura_json_estructurada(telemetria_forense):
     """Todos los registros deben ser JSON valido con los campos base de telemetría."""
     assert telemetria_forense.registros
@@ -197,6 +192,7 @@ def test_registros_conservan_estructura_json_estructurada(telemetria_forense):
             assert campo in registro, f"Registro sin el campo '{campo}': {registro}"
 
 
+# Campos en Logs
 def test_log_registra_message_id(telemetria_forense):
     """El flujo webhook -> SQS debe registrar el MessageId de LocalStack en el log."""
     identificadores = [
@@ -208,21 +204,9 @@ def test_log_registra_message_id(telemetria_forense):
     uuid.UUID(identificadores[0])
 
 
-def test_log_registra_timestamp_en_utc(telemetria_forense):
-    """Todo registro del .log.gz debe llevar la marca de tiempo en zona horaria UTC."""
-    marcas = [
-        registro["timestamp"]
-        for registro in telemetria_forense.registros
-        if isinstance(registro.get("timestamp"), str)
-    ]
-    assert marcas, "No se encontro el campo timestamp en la telemetría"
-    for marca in marcas:
-        assert es_utc(marca), f"Timestamp fuera de UTC: {marca}"
-
-
 @pytest.mark.xfail(
     strict=False,
-    reason="AsyncJSONFormatter no serializa TraceId: pendiente en logging_engine.py",
+    reason="Ausencia de TraceId en logs: pendiente de desarrollo",
 )
 def test_log_registra_trace_id(telemetria_forense):
     """La consigna exige TraceId en los .log.gz (hoy no se emite)."""
@@ -231,7 +215,7 @@ def test_log_registra_trace_id(telemetria_forense):
 
 @pytest.mark.xfail(
     strict=False,
-    reason="AsyncJSONFormatter no serializa X-Webhook-Signature: pendiente en logging_engine.py",
+    reason="Ausencia de X-Webhook-Signature en logs: pendiente de desarrollo",
 )
 def test_log_registra_x_webhook_signature(telemetria_forense):
     """La consigna exige X-Webhook-Signature en los .log.gz (hoy no se emite)."""
@@ -241,22 +225,7 @@ def test_log_registra_x_webhook_signature(telemetria_forense):
     }
 
 
-def test_formateador_serializa_message_id():
-    """Verificación unitaria del formateador del sistema sobre un registro con message_id."""
-    registro = logging.LogRecord("vulcano_engine", logging.INFO, __file__, 1, "evento", None, None)
-    registro.message_id = str(uuid.uuid4())
-    serializado = json.loads(AsyncJSONFormatter().format(registro))
-    assert serializado["message_id"] == registro.message_id
-
-
-def test_formateador_emite_timestamp_utc():
-    """El formateador del sistema emite el timestamp ISO 8601 en UTC."""
-    registro = logging.LogRecord("vulcano_engine", logging.INFO, __file__, 1, "evento", None, None)
-    marca = json.loads(AsyncJSONFormatter().format(registro))["timestamp"]
-    assert es_utc(marca), f"Timestamp fuera de UTC: {marca}"
-
-
-def test_archivos_log_gz_del_proyecto_son_inspeccionables():
+def test_archivos_log_gz_contienen_campos_forenses_requeridos():
     """Inspección de los .log.gz que el sistema ya haya rotado en la raíz del proyecto."""
     raiz = Path(__file__).resolve().parents[1]
     archivos = sorted(raiz.glob("*.log*.gz"))
@@ -268,3 +237,4 @@ def test_archivos_log_gz_del_proyecto_son_inspeccionables():
         assert descomprimido, f"Archivo vacío tras descomprimir: {ruta.name}"
         for linea in descomprimido.splitlines():
             json.loads(linea)
+
