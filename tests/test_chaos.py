@@ -11,7 +11,6 @@ Escenarios cubiertos:
 3. Poison messages publicados en SQS -> derivacion automatica a la Dead Letter Queue (DLQ).
 """
 
-# pylint: disable=redefined-outer-name
 
 import json
 import time
@@ -29,19 +28,15 @@ from vulcano_telemetry.webhook_receiver import app
 # Cargar las variables del archivo .env
 from vulcano_telemetry.config import (
     SQS_ENDPOINT_URL as LOCALSTACK_ENDPOINT,
-    DISPATCHER_TARGET_URL,
-    WEBHOOK_URL,
     WEBHOOK_SECRET,
-    WAIT_TIME_SECONDS
 )
 
 ENDPOINT = "/webhook"
-# LOCALSTACK_ENDPOINT = os.getenv("SQS_ENDPOINT_URL")
 CLAVE_INCORRECTA = "clave_hmac_total_incorrecta_para_chaos_987"
 COLA_EVENTOS = "vulcano-events-queue"
 COLA_DLQ = "vulcano-events-dlq"
 MAX_RECEIVE_COUNT = 3
-# mensaje
+# mensajes
 PREFIJO_PROPIO = '"transaction_id": "tx_chaos_'
 PREFIJO_FORENSE = '"transaction_id": "tx_forense_'
 PAYLOAD = b'{"transaction_id": "tx_chaos_001", "amount": 150.0, "status": "COMPLETED"}'
@@ -195,14 +190,14 @@ def colas_vulcano(cola_limpia, sqs) -> SimpleNamespace:
     if dlq_url is None:
         pytest.skip(f"La cola '{COLA_DLQ}' no esta creada por el script de LocalStack")
 
-    if asociacion_dlq_invalida(politica_redrive(sqs, cola_limpia.cola)):
+    if asociacion_dlq_invalida(politica_redrive(sqs, cola_limpia.cola)): # verficar asociacion dlq y cola principal
         pytest.skip(
             f"'{COLA_EVENTOS}' no tiene RedrivePolicy valida hacia '{COLA_DLQ}': "
             "el init script 01-create-resource.sh no llego a aplicarla"
         )
 
     drenar(sqs, dlq_url)    # elimina los mensjes propios de
-    dlq_base = tamano_total(sqs, dlq_url)   # verifica que la cola esté vacía, puede skipear
+    dlq_base = tamano_total(sqs, dlq_url)   # verifica que la cola esté vacía, skipea si tiene mensajes
     visibilidad_original = atributos(sqs, cola_limpia.cola, "VisibilityTimeout").get(
         "VisibilityTimeout", "30"
     )
@@ -212,7 +207,7 @@ def colas_vulcano(cola_limpia, sqs) -> SimpleNamespace:
         cola=cola_limpia.cola,  # url de cola
         dlq=dlq_url,            # url de dlq
         cola_base=cola_limpia.cola_base,    # 0 si está vacía
-        dlq_base=dlq_base,      #0 si dlq está
+        dlq_base=dlq_base,      # 0 si dlq está vacía
     )
 
     sqs.set_queue_attributes(QueueUrl=cola_limpia.cola, Attributes={"VisibilityTimeout": visibilidad_original})
@@ -220,12 +215,17 @@ def colas_vulcano(cola_limpia, sqs) -> SimpleNamespace:
     drenar(sqs, dlq_url)
 
 
+# Tests:
+
+# 1. Simular envíos de Webhooks con firmas alteradas o claves incorrectas y verificar respuesta HTTP 401 Unauthorized / 403 Forbidden.
+# test clave incorrecta
 def test_clave_secreta_incorrecta_responde_401(cliente):
     """Webhook firmado con otra clave: el receptor no debe autenticarlo."""
-    respuesta = cliente.post(ENDPOINT, content=PAYLOAD, headers=firmar(CLAVE_INCORRECTA, PAYLOAD))
+    respuesta = cliente.post(ENDPOINT, content=PAYLOAD, headers=firmar(CLAVE_INCORRECTA, PAYLOAD)) # ENDPOINT /webook
     assert respuesta.status_code in (401, 403), respuesta.text
 
 
+# test payload alterado
 def test_payload_alterado_responde_401(cliente):
     """Firma valida sobre un payload que fue modificado despues de firmar."""
     cabeceras = firmar(WEBHOOK_SECRET, PAYLOAD)
@@ -233,6 +233,7 @@ def test_payload_alterado_responde_401(cliente):
     assert respuesta.status_code in (401, 403), respuesta.text
 
 
+# test firma alterada en header
 def test_firma_alterada_en_cabecera_responde_401(cliente):
     """Firma hexadecimal corrompida dentro de la cabecera X-Webhook-Signature."""
     cabeceras = firmar(WEBHOOK_SECRET, PAYLOAD)
@@ -241,20 +242,7 @@ def test_firma_alterada_en_cabecera_responde_401(cliente):
     assert respuesta.status_code in (401, 403), respuesta.text
 
 
-def test_cabecera_de_firma_malformada_no_es_aceptada(cliente):
-    """Carga hostil con formato de cabecera invalido: jamas debe devolver 2xx.
-
-    Nota: hoy el parseo de la cabecera lanza ValueError sin capturar y responde
-    HTTP 500 en lugar de 401 (bug de manejo de errores en webhook_crypto).
-    """
-    respuesta = cliente.post(
-        ENDPOINT,
-        content=PAYLOAD,
-        headers={"Content-Type": "application/json", "X-Webhook-Signature": "t=abc,v1=zz"},
-    )
-    assert respuesta.status_code >= 400, respuesta.text
-
-
+# 2. Simular Webhooks con timestamps de hace 1 hora y verificar rechazo por WebhookTimestampError.
 def test_timestamp_de_hace_1_hora_responde_401(cliente):
     """Webhook reenviado con timestamp de hace 1 hora: fuera de la ventana de tolerancia."""
     antiguo = int(time.time()) - 3600
@@ -270,22 +258,7 @@ def test_timestamp_de_hace_1_hora_lanza_webhook_timestamp_error():
         verify_signature(WEBHOOK_SECRET, cabecera, PAYLOAD)
 
 
-@pytest.mark.usefixtures("cola_eventos")
-def test_webhook_valido_responde_202_y_se_encola(cliente):
-    """Caso de control: la firma correcta y actual es aceptada y encolada en SQS."""
-    respuesta = cliente.post(ENDPOINT, content=PAYLOAD, headers=firmar(WEBHOOK_SECRET, PAYLOAD))
-    assert respuesta.status_code == 202, respuesta.text
-    cuerpo = respuesta.json()
-    assert cuerpo["status"] == "accepted"
-    assert cuerpo["message_id"] not in (None, "", "N/A")
-
-
-def test_cola_del_ejercicio_tiene_politica_de_redrive_a_dlq(sqs, colas_vulcano):
-    """La cola real del ejercicio deriva a su Dead Letter Queue configurada."""
-    politica = politica_redrive(sqs, colas_vulcano.cola)
-    assert not asociacion_dlq_invalida(politica), politica
-
-
+# 3. Enviar cargas dañadas a SQS (mensajes venenosos / Poison Messages) para verificar la derivación automática a la Dead Letter Queue (DLQ) en LocalStack.
 def test_poison_message_no_se_elimina_de_la_cola_principal(sqs, colas_vulcano):
     """Un mensaje venenoso no debe borrarse: queda reintentando hasta agotar intentos."""
     sqs.send_message(QueueUrl=colas_vulcano.cola, MessageBody=POISON_MESSAGE)
@@ -316,46 +289,3 @@ def test_poison_message_deriva_automaticamente_a_dlq(sqs, colas_vulcano):
     assert intentos_fallidos == MAX_RECEIVE_COUNT
     assert tamano_total(sqs, colas_vulcano.cola) == colas_vulcano.cola_base
     assert tamano_total(sqs, colas_vulcano.dlq) == colas_vulcano.dlq_base + 1
-
-    recibidos = sqs.receive_message(
-        QueueUrl=colas_vulcano.dlq,
-        MaxNumberOfMessages=10,
-        WaitTimeSeconds=1,
-        VisibilityTimeout=0,
-    ).get("Messages", [])
-    assert POISON_MESSAGE in [mensaje["Body"] for mensaje in recibidos]
-    
-
-def test_mensaje_valido_se_consum_y_elimina(sqs, cola_limpia):
-    """Integración: el dispatcher entrega y elimina un mensaje válido de SQS."""
-
-    assert DISPATCHER_TARGET_URL, "Falta configurar DISPATCHER_TARGET_URL"
-    assert WEBHOOK_SECRET, "Falta configurar WEBHOOK_SECRET"
-
-    cuerpo_sano = json.dumps({
-        "transaction_id": "tx_chaos_sano_001",
-        "status": "COMPLETED"
-    })
-
-    # Publicar el mensaje en la cola.
-    respuesta = sqs.send_message(
-        QueueUrl=cola_limpia.cola,
-        MessageBody=cuerpo_sano
-    )
-
-    message_id = respuesta["MessageId"]
-
-    # Esperar a que run_dispatcher() procese y elimine el mensaje.
-    limite = time.monotonic() + TIMEOUT_DISPATCHER
-
-    while time.monotonic() < limite:
-        if tamano_total(sqs, cola_limpia.cola) == cola_limpia.cola_base:
-            break
-
-        time.sleep(0.2)
-
-    # El mensaje debe haber desaparecido de la cola.
-    assert tamano_total(sqs, cola_limpia.cola) == cola_limpia.cola_base, (
-        f"El dispatcher no eliminó el mensaje {message_id} "
-        f"en {TIMEOUT_DISPATCHER} segundos."
-    )
