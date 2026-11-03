@@ -5,14 +5,17 @@ Valida las firmas HMAC-SHA256 y los timestamps de las solicitudes
 entrantes antes de publicar los eventos autenticados en SQS.
 Compatible con LocalStack para el entorno de desarrollo.
 """
+
 import json
 import os
 import logging
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, status
 from .webhook_crypto import verify_signature
 from .core_sqs import get_sqs_client, send_event
 from .exceptions import WebhookSignatureError, WebhookTimestampError, SQSConnectionError
+
 
 # Cargamos variables de entorno e inicializamos el logger.
 load_dotenv()
